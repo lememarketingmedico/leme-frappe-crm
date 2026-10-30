@@ -1,0 +1,24 @@
+
+name: LEME CRM - Construir imagem Docker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-image:
+    uses: frappe/frappe_docker/.github/workflows/app-build-image.yml@main
+    with:
+      app_name: crm
+      app_repo: frappe/crm
+      app_ref: main
+      frappe_ref: version-16
+      frappe_image_prefix: ghcr.io/frappe
+      image_name: ghcr.io/${{ github.repository_owner }}/leme-frappe-crm
+      image_tag: v1
+      registry: ghcr.io
+      push: true
+      platforms: linux/amd64
