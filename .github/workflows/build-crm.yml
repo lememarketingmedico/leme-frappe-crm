@@ -1,4 +1,3 @@
-
 name: LEME CRM - Construir imagem Docker
 
 on:
@@ -10,15 +9,56 @@ permissions:
 
 jobs:
   build-image:
-    uses: frappe/frappe_docker/.github/workflows/app-build-image.yml@main
-    with:
-      app_name: crm
-      app_repo: frappe/crm
-      app_ref: main
-      frappe_ref: version-16
-      frappe_image_prefix: ghcr.io/frappe
-      image_name: ghcr.io/${{ github.repository_owner }}/leme-frappe-crm
-      image_tag: v1
-      registry: ghcr.io
-      push: true
-      platforms: linux/amd64
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Baixar arquivos oficiais do Frappe Docker
+        uses: actions/checkout@v4
+        with:
+          repository: frappe/frappe_docker
+          ref: main
+          path: builder
+
+      - name: Gerar lista de aplicativos
+        run: |
+          mkdir -p builder/.github/tmp
+          printf '[{"url":"https://github.com/frappe/crm","branch":"main"}]\n' > builder/.github/tmp/apps.json
+          cat builder/.github/tmp/apps.json
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagem de teste sem cache
+        uses: docker/build-push-action@v6
+        with:
+          context: builder
+          file: builder/images/layered/Containerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          no-cache: true
+          tags: leme-crm:teste
+          build-args: |
+            FRAPPE_IMAGE_PREFIX=ghcr.io/frappe
+            FRAPPE_BRANCH=version-16
+          secret-files: |
+            apps_json=builder/.github/tmp/apps.json
+
+      - name: Conferir se o CRM está realmente instalado
+        run: |
+          docker run --rm --entrypoint bash leme-crm:teste -lc \
+            'ls -1 /home/frappe/frappe-bench/apps && test -d /home/frappe/frappe-bench/apps/frappe && test -d /home/frappe/frappe-bench/apps/crm'
+
+      - name: Autenticar no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar a imagem validada
+        env:
+          IMAGE: ghcr.io/lememarketingmedico/leme-frappe-crm:v1
+        run: |
+          docker tag leme-crm:teste "$IMAGE"
+          docker push "$IMAGE"
